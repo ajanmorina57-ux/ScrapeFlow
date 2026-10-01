@@ -23,10 +23,14 @@ app.add_middleware(
 RAPIDAPI_PROXY_SECRET = os.getenv("RAPIDAPI_PROXY_SECRET")
 
 
-@app.get("/health")
-@app.head("/health")
-def health_check():
-    return {"status": "OK"}
+@app.get("/")
+@app.head("/")
+def read_root():
+    return {
+        "status": "online",
+        "service": "ScrapeFlow API",
+        "docs": "/docs"
+    }
 
 
 @app.get("/scrape")
