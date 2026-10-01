@@ -1,0 +1,162 @@
+openapi: 3.0.3
+info:
+  title: ScrapeFlow API
+  description: High-speed web scraping endpoint for metadata, headings, clean text, and HTML elements.
+  version: 1.1.0
+servers:
+  - url: https://scrapeflow.onrender.com
+    description: Production Server (Render)
+
+paths:
+  /health:
+    get:
+      summary: Health Check (GET)
+      description: Endpoint for UptimeRobot and Render keep-alive pings.
+      responses:
+        '200':
+          description: Service is online
+          content:
+            application/json:
+              example:
+                status: OK
+    head:
+      summary: Health Check (HEAD)
+      description: Lightweight header-only ping for health checkers.
+      responses:
+        '200':
+          description: Service is online
+
+  /scrape:
+    get:
+      summary: Scrape Webpage
+      description: Extracts page titles, headings, LLM-ready clean text, OpenGraph metadata, links, and custom CSS selectors from any URL.
+      parameters:
+        - name: url
+          in: query
+          required: true
+          description: The target webpage URL to scrape.
+          schema:
+            type: string
+            example: https://example.com
+
+        - name: include_metadata
+          in: query
+          required: false
+          description: Extracts meta description, og:image, and canonical URL.
+          schema:
+            type: boolean
+            default: true
+
+        - name: include_links
+          in: query
+          required: false
+          description: Extracts outbound link URLs from the page (up to 100).
+          schema:
+            type: boolean
+            default: false
+
+        - name: include_images
+          in: query
+          required: false
+          description: Extracts image src URLs from the page (up to 50).
+          schema:
+            type: boolean
+            default: false
+
+        - name: selector
+          in: query
+          required: false
+          description: Optional CSS selector to extract specific elements (e.g. '.product-title').
+          schema:
+            type: string
+            example: h1
+
+        - name: X-RapidAPI-Proxy-Secret
+          in: header
+          required: true
+          description: Secret key passed by RapidAPI gateway to validate incoming requests.
+          schema:
+            type: string
+
+      responses:
+        '200':
+          description: Extraction successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScrapeResponse'
+        '400':
+          description: Bad Request — Unable to reach or parse target URL
+          content:
+            application/json:
+              example:
+                detail: "Failed to fetch target URL: 404 Client Error"
+        '403':
+          description: Forbidden — Missing or invalid X-RapidAPI-Proxy-Secret header
+          content:
+            application/json:
+              example:
+                detail: "Forbidden: Direct access not allowed."
+        '500':
+          description: Internal Server Error — Extraction failure
+          content:
+            application/json:
+              example:
+                detail: "Page parsing failed: Internal error"
+
+components:
+  schemas:
+    ScrapeResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: success
+        target:
+          type: string
+          example: https://example.com
+        extracted_data:
+          type: object
+          properties:
+            page_title:
+              type: string
+              example: Example Domain
+            headings:
+              type: array
+              items:
+                type: string
+              example: ["Example Domain", "Features"]
+            clean_text_preview:
+              type: string
+              example: Example Domain. This domain is for use in illustrative examples...
+            metadata:
+              type: object
+              nullable: true
+              properties:
+                description:
+                  type: string
+                  nullable: true
+                  example: Example domain description
+                og_image:
+                  type: string
+                  nullable: true
+                  example: https://example.com/og.png
+                canonical_url:
+                  type: string
+                  nullable: true
+                  example: https://example.com
+            custom_selector_matches:
+              type: array
+              items:
+                type: string
+              nullable: true
+            links:
+              type: array
+              items:
+                type: string
+              nullable: true
+            images:
+              type: array
+              items:
+                type: string
+              nullable: true
