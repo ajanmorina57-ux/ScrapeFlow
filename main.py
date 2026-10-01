@@ -1,63 +1,60 @@
+import os
 import requests
 from bs4 import BeautifulSoup
-from fastapi import FastAPI, HTTPException, Security
-from fastapi.security.api_key import APIKeyHeader
+from fastapi import FastAPI, HTTPException, Header
 
-app = FastAPI()
+app = FastAPI(title="ScrapeFlow API")
 
-API_KEY_NAME = "access_token"
-api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
+RAPIDAPI_PROXY_SECRET = os.getenv("RAPIDAPI_PROXY_SECRET")
 
-# Your Gumroad Product permalink
-GUMROAD_PRODUCT_ID = "gsjvly"
 
+# 1. Health check endpoint for Render & UptimeRobot
+@app.get("/health")
+@app.head("/health")
+def health_check():
+    return {"status": "OK"}
+
+
+# 2. Main scraping endpoint
 @app.get("/scrape")
-def scrape_target(url: str, api_key: str = Security(api_key_header)):
-    if not api_key:
+def scrape_target(
+    url: str,
+    x_rapidapi_proxy_secret: str = Header(None, alias="X-RapidAPI-Proxy-Secret")
+):
+    # Verify request came through RapidAPI Gateway
+    if not RAPIDAPI_PROXY_SECRET or x_rapidapi_proxy_secret != RAPIDAPI_PROXY_SECRET:
         raise HTTPException(
             status_code=403, 
-            detail="Missing API Key. Please include your access_token."
+            detail="Forbidden: Direct access not allowed. Please call this endpoint via RapidAPI."
         )
-    
-    # Verify the license key with Gumroad's official API
-    response = requests.post(
-        "https://api.gumroad.com/v2/licenses/verify",
-        data={
-            "product_id": GUMROAD_PRODUCT_ID,
-            "license_key": api_key
-        }
-    )
-    
-    data = response.json()
-    
-    # Check if the license is valid and not refunded/chargebacked
-    if not data.get("success") or data.get("purchase", {}).get("chargebacked"):
-        raise HTTPException(
-            status_code=403, 
-            detail="Invalid or expired license key."
-        )
-    
-    # --- ACTUAL SCRAPING LOGIC ---
+
+    # Normalize URLs missing http/https prefixes
+    if not url.startswith(("http://", "https://")):
+        url = "https://" + url
+
+    # Scraping execution
     try:
         headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
         page_response = requests.get(url, headers=headers, timeout=10)
         page_response.raise_for_status()
-        
+
         soup = BeautifulSoup(page_response.text, "html.parser")
-        
-        # Extract page title
-        page_title = soup.title.string.strip() if soup.title else "No title found"
-        
-        # Extract main headings (h1 and h2)
-        headings = [h.get_text(strip=True) for h in soup.find_all(["h1", "h2"])]
-        
+
+        # Safely parse elements
+        page_title = soup.title.string.strip() if soup.title and soup.title.string else "No title found"
+        headings = [h.get_text(strip=True) for h in soup.find_all(["h1", "h2"]) if h.get_text(strip=True)]
+
+    except requests.exceptions.RequestException as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Failed to fetch target URL: {str(e)}"
+        )
     except Exception as e:
         raise HTTPException(
-            status_code=500, 
-            detail=f"Failed to scrape the target URL: {str(e)}"
+            status_code=500,
+            detail=f"Data extraction failed: {str(e)}"
         )
-    
-    # Return the real extracted data
+
     return {
         "status": "success",
         "target": url,
@@ -66,3 +63,5 @@ def scrape_target(url: str, api_key: str = Security(api_key_header)):
             "headings": headings
         }
     }
+
+
